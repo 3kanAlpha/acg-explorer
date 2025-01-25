@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>DarkRoom Explorer</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+        <style>
+            /* bodyに全画面の高さと幅を指定 */
+            body {
+                height: 100%;
+                width: 100%;
+                margin: auto;
+                display: flex;
+                justify-content: center; /* 水平方向に中央配置 */
+                align-items: center; /* 垂直方向に中央配置 */
+                flex-direction: column; /* 要素を縦に並べる */
+                color: #fff; /* テキスト白文字 */
+            }
+
+            #game-container {
+                height: 100vh;
+                align-items: center; /* 垂直方向に中央配置 */
+            }
+        </style>
+        <!--<link rel="stylesheet" type="text/css" href="style.css">-->
+        <script id="vertex-shader" type="notjs">
+            #version 300 es
+            in vec4 pos;
+            void main() {
+                gl_Position = pos;
+            }
+        </script>
+        <script id="fragment-shader" type="notjs">
+            #version 300 es
+            precision mediump float;
+            out vec4 fragColor;
+            #ifdef GL_ES
+            precision mediump float;
+            #endif
+            uniform vec2 iResolution;
+            uniform vec3 iMouse;
+            uniform float iTime;
+            
+            float smin(float a, float b, float k) {
+                float h = max(k-abs(a-b), 0.0)/k;
+                return min(a, b) - h*h*k*(1.0/4.0);
+            }
+            
+            float sdCylinder(vec3 p, vec3 c, float radius, float height) {
+                vec2 d = abs(vec2(length(p.xz - c.xz), p.y - c.y)) - vec2(radius, height);
+                return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+            }
+            
+            float sdTriangle(vec3 p, vec3 c, vec3 tr, float height) {
+                vec2 q = vec2(abs(p.x - c.x), p.y - c.y);
+                float z = abs(p.z - c.z) - height;
+                float th = tr.x;
+                float tw = tr.y;
+                float y = abs(q.y - th) - tr.z;
+                float x = abs(q.x) - tw * (1.0 - q.y / th);
+                return max(max(x,y), z);
+            }
+            
+            float sdfPlane(vec3 p, vec3 planeNormal, vec3 point) {
+                return dot(p - point, planeNormal);
+            }
+            
+            float DandE(vec3 p) {
+                vec3 p2 = (p - vec3(0.5, 0.0, 1.8));
+                // E
+                vec3 ewBoxSize = vec3(0.4, 1.0, 0.2); // Eの横部分 (幅, 高さ, 奥行)
+                float ew1 = length(max(abs(p2 - vec3(0.0, -0.2, 0.0)) - ewBoxSize, 0.0));
+                float ew2 = length(max(abs(p2 - vec3(0.0, -0.2, -1.0)) - ewBoxSize, 0.0));
+                float ew3 = length(max(abs(p2 - vec3(0.0, -0.2, -2.0)) - ewBoxSize, 0.0));
+                vec3 ehBoxSize = vec3(0.4, 0.2, 1.2); // Eの縦部分 (幅, 高さ, 奥行)
+                float eh = length(max(abs(p2 - vec3(0.0, -1.0, -1.0)) - ehBoxSize, 0.0));
+                float e = min(min(min(ew1, ew2),ew3),eh);
+                // D
+                vec3 cylinderCenter = vec3(0.0, -1.0, 0.8); // 円柱の中心
+                float outCylinder = sdCylinder(p, cylinderCenter, 1.5, 0.2);
+                outCylinder = max(outCylinder, p.x-0.9);
+                float inCylinder = sdCylinder(p, cylinderCenter, 1.0, 0.3);
+                inCylinder = max(inCylinder, p.x-0.5);
+                float d = max(-inCylinder, outCylinder);
+                return min(d,e);
+            }
+            
+            float sdfS(vec3 p) {
+                vec3 q = vec3(p.x-0.2, p.z-1.0, -p.y-0.5);
+                vec3 cylinderCenter = vec3(0.3, 0.3, 0.9); // 円柱の中心
+                float outCylinder = sdCylinder(q, cylinderCenter, 1.5, 0.2);
+                outCylinder = max(outCylinder, q.x-0.59);
+                float inCylinder = sdCylinder(q, cylinderCenter, 1.0, 0.3);
+                inCylinder = max(inCylinder, q.x-0.7);
+                float s1 = max(-inCylinder, outCylinder);
+                vec3 q1 = vec3(-p.x+1.5, p.z-1.0, p.y-0.10);
+                float outCylinder1 = sdCylinder(q1, cylinderCenter, 1.5, 0.2);
+                outCylinder1 = max(outCylinder1, -q.x+0.61);
+                float inCylinder1 = sdCylinder(q1, cylinderCenter, 1.0, 0.3);
+                inCylinder1 = max(inCylinder1, -q.x+0.5);
+                float s2 = max(-inCylinder1, outCylinder1);
+                return smin(s1,s2,0.01);
+            }
+            
+            float sdfA(vec3 p, float scale){
+                vec3 q = p / scale;
+                vec3 ahBoxSize = vec3(1.0, 0.2, 0.2); // Aの横部分 (幅, 高さ, 奥行)
+                float ah = length(max(abs(q - vec3(0.5, -1.5, 0.0)) - ahBoxSize, 0.0)); // 縦部分なる
+                vec3 trC = vec3(0.5, -1.0, 0.0);
+                float h = 3.8;
+                vec3 tr1 = vec3(0.6, 0.3, h);//th,tw,h
+                float inTr = sdTriangle(q, trC, tr1, 0.3);
+                float b = 3.0;
+                vec3 tr2 = vec3(0.6*b, 0.3*b, h);//th,tw,h
+                float outTr = sdTriangle(q, trC, tr2, 0.2);
+                return min(max(-inTr,outTr),ah)*scale;
+            }
+            
+            float sdf2A(vec3 p){
+                float plane_dist1 = sdfPlane(p, vec3(1.0,0.0,0.0), vec3(0.7,0.0,0.0));
+                float plane_dist2 = sdfPlane(p, vec3(-1.0,0.0,0.0), vec3(0.7,0.0,0.0));
+                float a1 = max(plane_dist1, sdfA(p, 1.0));
+                float a2 = max(plane_dist2, sdfA(p-vec3(0.0,0.0,-1.5),1.3));
+                return min(a1,a2);
+            }
+            
+            float sdfV(vec3 p){
+                vec3 trC = vec3(0.5, 0.0, 0.0);
+                float h = 3.8;
+                vec3 tr1 = vec3(0.8, 0.3, h);//th,tw,h
+                float inTr = sdTriangle(vec3(p.x,-p.y,p.z), trC, tr1, 0.3);
+                float b = 3.0;
+                vec3 tr2 = vec3(0.8*b, 0.3*b, h);//th,tw,h
+                float outTr = sdTriangle(vec3(p.x,-p.y,p.z), trC, tr2, 0.2);
+                return max(-inTr,outTr);
+            }
+            
+            float sdfW(vec3 p){
+                float plane_dist1 = sdfPlane(p, vec3(0.0,-1.0,0.0), vec3(0.0,-1.7,0.0));
+                float W = min(sdfV(p),sdfV(p-vec3(2.3,0.0,0.0)));
+                return max(plane_dist1, W);
+            }
+            
+            // scene
+            float whole(vec3 p){
+                // 左、上、手前
+                float A2 = sdf2A(p-vec3(0.0,0.0,0.0));
+                float A = sdfA(p-vec3(-5.0,3.0,1.0), 1.0);
+                float DE = DandE((vec3(p.x,p.z,p.y)-vec3(-4.0,2.0,-3.0))*0.9);
+                float W = sdfW(p-vec3(2.0,2.3,-2.0));
+                float S = sdfS((p-vec3(3.0,-2.0,1.0))*1.2);
+                return min(S,min(W,min(A2,min(A,DE))));
+            }
+            
+            vec3 wood(vec2 uv) {
+                float scale = 5.0;
+                vec3 woodColor1 = vec3(255.0, 217.0, 172.0) / 255.0;
+                vec3 woodColor2 = vec3(176.0, 116.0, 46.0) / 255.0;
+                float rings = cos(length(uv * scale)*5.0);
+                rings = smoothstep(0.5, 0.8, fract(rings));
+                return mix(woodColor1, woodColor2, rings);
+            }
+            
+            // 法線ベクトルの計算
+            vec3 normal( vec3 pos ) {    
+                const vec2 e = vec2( 0.0001, 0.0 );
+                return normalize( vec3(
+                    whole(pos+e.xyy) - whole(pos-e.xyy),
+                    whole(pos+e.yxy) - whole(pos-e.yxy),
+                    whole(pos+e.yyx) - whole(pos-e.yyx))
+                );
+            }
+            
+            void main() {
+                vec2 uv = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0;
+                uv.x *= iResolution.x / iResolution.y; // アスペクト比の調整
+            
+                vec3 ro = vec3(0.0);
+                vec3 rotuv;
+                // カメラの設定
+                if (iMouse.z == 1.0) {
+                    // 正規化されたマウス座標を [-1, 1] の範囲に変換
+                    float normalizedX = 2.0 * (iMouse.x / iResolution.x) - 1.0;
+                    float normalizedY = 2.0 * (iMouse.y / iResolution.y) - 1.0;
+            
+                    // マウスの動きを角度に変換
+                    float yaw = normalizedX * radians(90.0);  // X軸での回転 (-90° ～ 90°)
+                    float pitch = normalizedY * radians(45.0); // Y軸での回転 (-45° ～ 45°)
+            
+                    // カメラの基本位置
+                    vec3 cameraOrigin = vec3(0.0, 0.0, 10.0);
+            
+                    // 回転行列を計算
+                    mat3 rotY = mat3(
+                        cos(yaw),  0.0, sin(yaw),
+                        0.0,       1.0, 0.0,
+                       -sin(yaw),  0.0, cos(yaw)
+                    );
+            
+                    mat3 rotX = mat3(
+                        1.0,  0.0,       0.0,
+                        0.0,  cos(pitch), -sin(pitch),
+                        0.0,  sin(pitch), cos(pitch)
+                    );
+            
+                    // カメラ位置を回転
+                    ro = rotY * rotX * cameraOrigin;
+                    rotuv = vec3(rotY * rotX * vec3(uv, 0.0));
+                }else{
+                    ro = vec3(0.0,0.0,10.0);
+                    rotuv = vec3(uv, 0.0);
+                }
+            
+                vec3 ta = vec3(0.0, 0.0, 0.0); // 注視点
+                vec3 forward = normalize(ta - ro);
+                vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), forward));
+                vec3 up = cross(forward, right);
+                // vec3 rayDir = normalize(forward + uv.x * right + uv.y * up);
+                vec3 rayDir = normalize(rotuv * 8.0 - ro);
+            
+                // レイマーチング
+                vec3 p;
+                float t = 0.1;
+                bool hit = false;
+            
+                for (int i = 0; i < 100; i++) {
+                    p = ro + t * rayDir;
+                    p = p * 0.8;
+                    float dist = whole(p);
+                    if (dist < 0.001) {
+                        hit = true;
+                        break;
+                    }
+                    t += dist;
+                    if (t > 50.0) break;
+                }
+                if (t > 50.0) {
+                    t = -1.0;
+                }
+            
+                // 色の計算
+                vec3 color = vec3(0.0);
+                if (t > 0.0) {
+                    vec3 pos = ro + t * rayDir;
+                    vec3 nor = normal( pos );
+                    vec3 light_dir = normalize(ro);
+                    vec3 mat = wood(p.xy);
+                    color = vec3(mix(1.0, 0.0, sqrt(t / 10.5))) * mat;
+                    
+                    // 点光源
+                    vec3 d = ro - pos; float r = sqrt(dot(d,d));
+                    vec3 l = d / r;
+                    vec3 clight = vec3(0.5) * pow( 1.5 / max( r, 1.0 ), 2.0 );
+                    color += clight * max( 0.0, dot( nor, l ) ) * mat;
+
+                    // color = nor;
+                } else {
+                    color = vec3(0.0);
+                }
+            
+                fragColor = vec4(color, 1.0);
+            }                    
+        </script>
+
+        <script id="js-for-canvas" type="text/javascript">
+            function createProgram(gl, vertexSrc, fragmentSrc) {
+                let vshd = gl.createShader(gl.VERTEX_SHADER);
+                gl.shaderSource(vshd, vertexSrc);
+                gl.compileShader(vshd);
+                if (!gl.getShaderParameter(vshd, gl.COMPILE_STATUS))
+                    throw new Error("Unable to compile shader: " + gl.getShaderInfoLog(vshd));
+                let fshd = gl.createShader(gl.FRAGMENT_SHADER);
+                gl.shaderSource(fshd, fragmentSrc);
+                gl.compileShader(fshd);
+                if (!gl.getShaderParameter(fshd, gl.COMPILE_STATUS))
+                    throw new Error("Unable to compile shader: " + gl.getShaderInfoLog(fshd));
+                let prog = gl.createProgram();
+                gl.attachShader(prog, vshd);
+                gl.attachShader(prog, fshd);
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+                    throw new Error("Unable to link program: " + gl.getProgramInfoLog(prog));
+                return prog;
+            }
+
+            async function loadShaderSource(url) {
+                const response = await fetch(url);
+                const text = await response.text();
+                return text;
+            }
+
+            async function init(){
+                var c = document.getElementById("glCanvas");
+                var gl = c.getContext("webgl2"); // or "webgl"
+                if (!gl) {
+                    throw new Error("WebGL unsupported!");
+                }
+
+                // Clear screen
+                gl.clearColor(0, 0, 0, 0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+
+                var vertexPosBuffer = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, vertexPosBuffer);
+                var positions = [
+                    -1, -1,
+                    1, -1,
+                    -1,  1,
+                    1,  1 ];
+                /*
+                2___3
+                |\  |
+                | \ |
+                |__\|
+                0   1
+                */
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+                vertexPosBuffer.itemSize = 2;
+                vertexPosBuffer.numItems = 4;
+
+                // Create our shader program
+                var vs = document.querySelector("#vertex-shader").text.trim();
+                var fs = document.querySelector("#fragment-shader").text.trim();
+                // var fs = await loadShaderSource("http://localhost:8000/shader.glsl");
+                var program = createProgram(gl, vs, fs);
+                gl.useProgram(program);
+
+                // Get and set vertex attribute
+                var positionAtt = gl.getAttribLocation(program, "pos");
+                gl.enableVertexAttribArray(positionAtt);
+                gl.vertexAttribPointer(positionAtt, 2, gl.FLOAT, false, 0, 0);
+                var resolutionUniformLocation = gl.getUniformLocation(program, "iResolution");
+                gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
+                let mousePosition = {x: 0, y: 0, z: 0};
+                function getMousePosition(event) {
+                    const rect = event.target.getBoundingClientRect();
+                    mousePosition.x = event.clientX - rect.left
+                    mousePosition.y = event.clientY - rect.top
+                }
+                gl.canvas.addEventListener('mousemove', getMousePosition)
+                gl.canvas.addEventListener('mousedown', () => {
+                    mousePosition.z = 1.0;
+                });
+                gl.canvas.addEventListener('mouseup', () => {
+                    mousePosition.z = 0.0;
+                });
+
+                // Request animation
+                function render(gl, program, ms_since_page_loaded) {
+                    var u_time_loc = gl.getUniformLocation(program, "iTime");
+                    gl.uniform1f(u_time_loc, ms_since_page_loaded * 0.001);
+                    var mousePositionUniformLocation = gl.getUniformLocation(program, "iMouse");
+                    gl.uniform3f(mousePositionUniformLocation, mousePosition.x, mousePosition.y, mousePosition.z);
+                    // Draw triangles
+                    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+                    // Request animation again
+                    requestAnimationFrame(function(timestamp) {
+                        render(gl, program, timestamp);
+                    });
+                }
+
+                requestAnimationFrame(function(timestamp) {
+                    render(gl, program, timestamp);
+                });
+            }
+            window.onload = init;
+        </script>
+    </head>
+    <body class="bg-dark">
+        <div id="game-container" class="text-white text-center">
+            <h2 class="my-4">DarkRoom Explorer</h2>
+
+            <canvas id="glCanvas" class="mb-4" width="400" height="400" style="border: 1px dashed grey;"></canvas>
+            <div class="text-center mb-4">
+                <p style="text-align: center; font-weight: bold;">How to play</p>
+                <p>- Find building blocks!<br />- Guess the hidden text!</p>
+            </div>
+            <form name="form" class="mb-2">
+                <label for="answer-textfield" class="form-label">Answer</label>
+                <input type="text" id="answer-textfield" name="anser">
+                <input type="button" value="submit" onClick="check()">
+            </form>
+            <div id="feedback"></div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+        <script id="answer-check" type="text/javascript">
+            function check(){
+                const feedback = document.getElementById("feedback");
+                const word = document.form.anser.value;
+                if(word=="WASEDA"){
+                    feedback.textContent = "Correct!"
+                }
+                else if(word.length<6){
+                    feedback.textContent = "You haven't found all characters."
+                }
+                else {alert("Wrong answer")};
+            }
+        </script>
+    </body>
+</html>
