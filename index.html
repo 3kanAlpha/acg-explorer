@@ -163,7 +163,7 @@
             }
             
             // 法線ベクトルの計算
-            vec3 normal( vec3 pos ) {    
+            vec3 normal( vec3 pos ) {
                 const vec2 e = vec2( 0.0001, 0.0 );
                 return normalize( vec3(
                     whole(pos+e.xyy) - whole(pos-e.xyy),
@@ -175,35 +175,30 @@
             void main() {
                 vec2 uv = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0;
                 uv.x *= iResolution.x / iResolution.y; // アスペクト比の調整
-            
-                vec3 ro = vec3(0.0);
+                
+                vec3 ro;
                 vec3 rotuv;
                 // カメラの設定
                 if (iMouse.z == 1.0) {
-                    // 正規化されたマウス座標を [-1, 1] の範囲に変換
+                    // マウス座標を [-1, 1] の範囲に変換
                     float normalizedX = 2.0 * (iMouse.x / iResolution.x) - 1.0;
                     float normalizedY = 2.0 * (iMouse.y / iResolution.y) - 1.0;
-            
-                    // マウスの動きを角度に変換
-                    float yaw = normalizedX * radians(90.0);  // X軸での回転 (-90° ～ 90°)
-                    float pitch = normalizedY * radians(45.0); // Y軸での回転 (-45° ～ 45°)
-            
+                    // 角度に変換
+                    float yaw = normalizedX * radians(180.0);  // X軸での回転
+                    float pitch = normalizedY * radians(90.0); // Y軸での回転
                     // カメラの基本位置
                     vec3 cameraOrigin = vec3(0.0, 0.0, 10.0);
-            
                     // 回転行列を計算
                     mat3 rotY = mat3(
                         cos(yaw),  0.0, sin(yaw),
                         0.0,       1.0, 0.0,
-                       -sin(yaw),  0.0, cos(yaw)
+                        -sin(yaw),  0.0, cos(yaw)
                     );
-            
                     mat3 rotX = mat3(
                         1.0,  0.0,       0.0,
                         0.0,  cos(pitch), -sin(pitch),
                         0.0,  sin(pitch), cos(pitch)
                     );
-            
                     // カメラ位置を回転
                     ro = rotY * rotX * cameraOrigin;
                     rotuv = vec3(rotY * rotX * vec3(uv, 0.0));
@@ -211,25 +206,16 @@
                     ro = vec3(0.0,0.0,10.0);
                     rotuv = vec3(uv, 0.0);
                 }
-            
-                vec3 ta = vec3(0.0, 0.0, 0.0); // 注視点
-                vec3 forward = normalize(ta - ro);
-                vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), forward));
-                vec3 up = cross(forward, right);
-                // vec3 rayDir = normalize(forward + uv.x * right + uv.y * up);
+                
                 vec3 rayDir = normalize(rotuv * 8.0 - ro);
-            
                 // レイマーチング
                 vec3 p;
                 float t = 0.1;
-                bool hit = false;
-            
                 for (int i = 0; i < 100; i++) {
                     p = ro + t * rayDir;
                     p = p * 0.8;
                     float dist = whole(p);
                     if (dist < 0.001) {
-                        hit = true;
                         break;
                     }
                     t += dist;
@@ -238,7 +224,7 @@
                 if (t > 50.0) {
                     t = -1.0;
                 }
-            
+                
                 // 色の計算
                 vec3 color = vec3(0.0);
                 if (t > 0.0) {
@@ -247,20 +233,18 @@
                     vec3 light_dir = normalize(ro);
                     vec3 mat = wood(p.xy);
                     color = vec3(mix(1.0, 0.0, sqrt(t / 10.5))) * mat;
-                    
                     // 点光源
                     vec3 d = ro - pos; float r = sqrt(dot(d,d));
                     vec3 l = d / r;
                     vec3 clight = vec3(0.5) * pow( 1.5 / max( r, 1.0 ), 2.0 );
                     color += clight * max( 0.0, dot( nor, l ) ) * mat;
-
                     // color = nor;
                 } else {
                     color = vec3(0.0);
                 }
-            
+                
                 fragColor = vec4(color, 1.0);
-            }                    
+            }
         </script>
 
         <script id="js-for-canvas" type="text/javascript">
@@ -389,13 +373,28 @@
             function check(){
                 const feedback = document.getElementById("feedback");
                 const word = document.form.anser.value;
-                if(word=="WASEDA"){
-                    feedback.textContent = "Correct!"
-                }
-                else if(word.length<6){
+                if(word.length<6){
                     feedback.textContent = "You haven't found all characters."
                 }
-                else {alert("Wrong answer")};
+                else if(word.length>6){
+                    feedback.textContent = "Wrong answer";
+                }
+                else{
+                    const byteArray = new TextEncoder().encode(word);
+                    const ansValues = [87, 65, 83, 69, 68, 65]
+                    var flag = true;
+                    for (let i = 0; i < ansValues.length; i++) {
+                        if (byteArray[i] != ansValues[i]){
+                            flag = false;
+                        }
+                    }
+                    if(flag==true){
+                        feedback.textContent = "Correct!"
+                    }
+                    else{
+                        feedback.textContent = "Wrong answer";
+                    }
+                }
             }
         </script>
     </body>
