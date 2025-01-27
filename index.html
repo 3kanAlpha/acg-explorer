@@ -40,6 +40,7 @@
             #endif
             uniform vec2 iResolution;
             uniform vec3 iMouse;
+            uniform vec2 iKey;
             uniform float iTime;
             
             float smin(float a, float b, float k) {
@@ -175,6 +176,17 @@
             void main() {
                 vec2 uv = gl_FragCoord.xy / iResolution.xy * 2.0 - 1.0;
                 uv.x *= iResolution.x / iResolution.y; // アスペクト比の調整
+                // iKeyを [-1, 1] の範囲に変換
+                float normalizedWS = iKey.x / 100.0;
+                normalizedWS = min(normalizedWS,1.0);
+                normalizedWS = max(normalizedWS,-1.0);
+                float normalizedDA = iKey.y / 100.0;
+                normalizedDA = min(normalizedDA,1.0);
+                normalizedDA = max(normalizedDA,-1.0);
+
+                // iKeyを角度に変換
+                float latitude = normalizedWS*50.0;  // Y軸での回転 (-180° ～ 180°)
+                float longtitude = normalizedDA*50.0; // X軸での回転 (-90° ～ 90°)
                 
                 vec3 ro;
                 vec3 rotuv;
@@ -317,17 +329,34 @@
                 var resolutionUniformLocation = gl.getUniformLocation(program, "iResolution");
                 gl.uniform2f(resolutionUniformLocation, gl.canvas.width, gl.canvas.height);
                 let mousePosition = {x: 0, y: 0, z: 0};
-                function getMousePosition(event) {
+                gl.canvas.addEventListener('mousemove', (event) =>{
                     const rect = event.target.getBoundingClientRect();
                     mousePosition.x = event.clientX - rect.left
                     mousePosition.y = event.clientY - rect.top
-                }
-                gl.canvas.addEventListener('mousemove', getMousePosition)
+                });
                 gl.canvas.addEventListener('mousedown', () => {
                     mousePosition.z = 1.0;
                 });
                 gl.canvas.addEventListener('mouseup', () => {
                     mousePosition.z = 0.0;
+                });
+                let wasd = {x: 0, y: 0};
+                let keyRatio = 1.0;
+                window.addEventListener('keydown', (event) => {
+                    switch (event.code) {
+                        case 'KeyW':
+                            if(wasd.x<100) wasd.x+=keyRatio;
+                        break;
+                        case 'KeyA':
+                            if(wasd.y>-100) wasd.y-=keyRatio;
+                        break;
+                        case 'KeyS':
+                            if(wasd.x>-100) wasd.x-=keyRatio;
+                        break;
+                        case 'KeyD':
+                            if(wasd.y<100) wasd.y+=keyRatio;
+                        break;
+                    }
                 });
 
                 // Request animation
@@ -336,6 +365,8 @@
                     gl.uniform1f(u_time_loc, ms_since_page_loaded * 0.001);
                     var mousePositionUniformLocation = gl.getUniformLocation(program, "iMouse");
                     gl.uniform3f(mousePositionUniformLocation, mousePosition.x, mousePosition.y, mousePosition.z);
+                    var keyUniformLocation = gl.getUniformLocation(program, "iKey");
+                    gl.uniform2f(keyUniformLocation, wasd.x, wasd.y);
                     // Draw triangles
                     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
                     // Request animation again
