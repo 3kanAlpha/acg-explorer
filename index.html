@@ -127,8 +127,8 @@
             float sdf2A(vec3 p){
                 float plane_dist1 = sdfPlane(p, vec3(1.0,0.0,0.0), vec3(0.7,0.0,0.0));
                 float plane_dist2 = sdfPlane(p, vec3(-1.0,0.0,0.0), vec3(0.7,0.0,0.0));
-                float a1 = max(plane_dist1, sdfA(p, 1.0));
-                float a2 = max(plane_dist2, sdfA(p-vec3(0.0,0.0,-1.5),1.3));
+                float a1 = max(plane_dist1, sdfA(p, 1.16));
+                float a2 = max(plane_dist2, sdfA(p-vec3(0.0,0.0,-1.5),1.0));
                 return min(a1,a2);
             }
             
@@ -155,7 +155,7 @@
             // scene
             float whole(vec3 p){
                 // 左、上、手前
-                float A2 = sdf2A(p-vec3(0.0,0.0,0.0));
+                float A2 = sdf2A(p-vec3(0.0,0.0,-1.0));
                 float A = sdfA(p-vec3(-3.0,-2.0,3.0), 1.0);
                 float DE = sdfDE((vec3(p.x,p.z,p.y)-vec3(-3.0,0.0,3.0))*0.9);
                 float W = sdfW(p-vec3(3.0,3.3,-3.0));
