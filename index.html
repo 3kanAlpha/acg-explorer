@@ -49,14 +49,14 @@
                 return min(a, b) - h*h*k*(1.0/4.0);
             }
             
-            float sdCylinder(vec3 p, vec3 c, float radius, float height) {
-                vec2 d = abs(vec2(length(p.xz - c.xz), p.y - c.y)) - vec2(radius, height);
-                return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+            float sdCylinder(vec3 p, vec3 center, float radius, float depth) {
+                vec2 q = abs(vec2(length(p.xz - center.xz), p.y - center.y)) - vec2(radius, depth);
+                return min(max(q.x, q.y), 0.0) + length(max(q, 0.0));
             }
             
-            float sdTriangle(vec3 p, vec3 c, vec3 tr, float height) {
-                vec2 q = vec2(abs(p.x - c.x), p.y - c.y);
-                float z = abs(p.z - c.z) - height;
+            float sdTriangle(vec3 p, vec3 center, vec3 tr, float depth) {
+                vec2 q = vec2(abs(p.x - center.x), p.y - center.y);
+                float z = abs(p.z - center.z) - depth;
                 float th = tr.x;
                 float tw = tr.y;
                 float y = abs(q.y - th) - tr.z;
@@ -68,53 +68,58 @@
                 return dot(p - point, planeNormal);
             }
             
-            float DandE(vec3 p) {
-                vec3 p2 = (p - vec3(0.5, 0.0, 1.8));
+            float sdfDE(vec3 p) {
+                vec3 q = (p - vec3(0.5, 0.0, 1.8));
                 // E
                 vec3 ewBoxSize = vec3(0.4, 1.0, 0.2); // Eの横部分 (幅, 高さ, 奥行)
-                float ew1 = length(max(abs(p2 - vec3(0.0, -0.2, 0.0)) - ewBoxSize, 0.0));
-                float ew2 = length(max(abs(p2 - vec3(0.0, -0.2, -1.0)) - ewBoxSize, 0.0));
-                float ew3 = length(max(abs(p2 - vec3(0.0, -0.2, -2.0)) - ewBoxSize, 0.0));
+                float ew1 = length(max(abs(q - vec3(0.0, -0.2, 0.0)) - ewBoxSize, 0.0));
+                float ew2 = length(max(abs(q - vec3(0.0, -0.2, -1.0)) - ewBoxSize, 0.0));
+                float ew3 = length(max(abs(q - vec3(0.0, -0.2, -2.0)) - ewBoxSize, 0.0));
                 vec3 ehBoxSize = vec3(0.4, 0.2, 1.2); // Eの縦部分 (幅, 高さ, 奥行)
-                float eh = length(max(abs(p2 - vec3(0.0, -1.0, -1.0)) - ehBoxSize, 0.0));
+                float eh = length(max(abs(q - vec3(0.0, -1.0, -1.0)) - ehBoxSize, 0.0));
                 float e = min(min(min(ew1, ew2),ew3),eh);
                 // D
-                vec3 cylinderCenter = vec3(0.0, -1.0, 0.8); // 円柱の中心
-                float outCylinder = sdCylinder(p, cylinderCenter, 1.5, 0.2);
+                vec3 center = vec3(0.0, -1.0, 0.8); // 円柱の中心
+                float outCylinder = sdCylinder(p, center, 1.5, 0.2);
                 outCylinder = max(outCylinder, p.x-0.9);
-                float inCylinder = sdCylinder(p, cylinderCenter, 1.0, 0.3);
+                float inCylinder = sdCylinder(p, center, 1.0, 0.3);
                 inCylinder = max(inCylinder, p.x-0.5);
                 float d = max(-inCylinder, outCylinder);
                 return min(d,e);
             }
             
             float sdfS(vec3 p) {
-                vec3 q = vec3(p.x-0.2, p.z-1.0, -p.y-0.5);
-                vec3 cylinderCenter = vec3(0.3, 0.3, 0.9); // 円柱の中心
-                float outCylinder = sdCylinder(q, cylinderCenter, 1.5, 0.2);
-                outCylinder = max(outCylinder, q.x-0.59);
-                float inCylinder = sdCylinder(q, cylinderCenter, 1.0, 0.3);
-                inCylinder = max(inCylinder, q.x-0.7);
-                float s1 = max(-inCylinder, outCylinder);
-                vec3 q1 = vec3(-p.x+1.5, p.z-1.0, p.y-0.10);
-                float outCylinder1 = sdCylinder(q1, cylinderCenter, 1.5, 0.2);
-                outCylinder1 = max(outCylinder1, -q.x+0.61);
-                float inCylinder1 = sdCylinder(q1, cylinderCenter, 1.0, 0.3);
-                inCylinder1 = max(inCylinder1, -q.x+0.5);
-                float s2 = max(-inCylinder1, outCylinder1);
+                p = vec3(p.x, p.z, p.y);
+                // 上部分
+                vec3 q1 = vec3(p.x-0.2, p.z-1.0, -p.y-0.5);
+                vec3 center = vec3(0.3, 0.3, 0.9);
+                float outCylinder1 = sdCylinder(q1, center, 1.5, 0.2);
+                outCylinder1 = max(outCylinder1, q1.x-0.59);
+                float inCylinder1 = sdCylinder(q1, center, 1.0, 0.3);
+                inCylinder1 = max(inCylinder1, q1.x-0.7);
+                float s1 = max(-inCylinder1, outCylinder1);
+                // 下部分
+                vec3 q2 = vec3(-p.x+1.5, p.z-1.0, p.y-0.10);
+                float outCylinder2 = sdCylinder(q2, center, 1.5, 0.2);
+                outCylinder2 = max(outCylinder2, -q1.x+0.61);
+                float inCylinder2 = sdCylinder(q2, center, 1.0, 0.3);
+                inCylinder2 = max(inCylinder2, -q1.x+0.5);
+                float s2 = max(-inCylinder2, outCylinder2);
                 return smin(s1,s2,0.01);
             }
             
             float sdfA(vec3 p, float scale){
                 vec3 q = p / scale;
                 vec3 ahBoxSize = vec3(1.0, 0.2, 0.2); // Aの横部分 (幅, 高さ, 奥行)
-                float ah = length(max(abs(q - vec3(0.5, -1.5, 0.0)) - ahBoxSize, 0.0)); // 縦部分なる
+                float ah = length(max(abs(q - vec3(0.5, -1.5, 0.0)) - ahBoxSize, 0.0));
+                // 内側三角形
                 vec3 trC = vec3(0.5, -1.0, 0.0);
                 float h = 3.8;
-                vec3 tr1 = vec3(0.6, 0.3, h);//th,tw,h
+                vec3 tr1 = vec3(0.6, 0.3, h); // th,tw,h
                 float inTr = sdTriangle(q, trC, tr1, 0.3);
+                // 外側三角形
                 float b = 3.0;
-                vec3 tr2 = vec3(0.6*b, 0.3*b, h);//th,tw,h
+                vec3 tr2 = vec3(0.6*b, 0.3*b, h); // th,tw,h
                 float outTr = sdTriangle(q, trC, tr2, 0.2);
                 return min(max(-inTr,outTr),ah)*scale;
             }
@@ -130,17 +135,20 @@
             float sdfV(vec3 p){
                 vec3 trC = vec3(0.5, 0.0, 0.0);
                 float h = 3.8;
-                vec3 tr1 = vec3(0.8, 0.3, h);//th,tw,h
+                // 内側三角形
+                vec3 tr1 = vec3(0.8, 0.3, h); // th,tw,h
                 float inTr = sdTriangle(vec3(p.x,-p.y,p.z), trC, tr1, 0.3);
                 float b = 3.0;
-                vec3 tr2 = vec3(0.8*b, 0.3*b, h);//th,tw,h
+                // 外側三角形
+                vec3 tr2 = vec3(0.8*b, 0.3*b, h); // th,tw,h
                 float outTr = sdTriangle(vec3(p.x,-p.y,p.z), trC, tr2, 0.2);
                 return max(-inTr,outTr);
             }
             
             float sdfW(vec3 p){
+                p = vec3(p.z,p.y,p.x);
                 float plane_dist1 = sdfPlane(p, vec3(0.0,-1.0,0.0), vec3(0.0,-1.7,0.0));
-                float W = min(sdfV(p),sdfV(p-vec3(2.3,0.0,0.0)));
+                float W = min(sdfV(p), sdfV(p-vec3(2.3,0.0,0.0)));
                 return max(plane_dist1, W);
             }
             
@@ -148,10 +156,10 @@
             float whole(vec3 p){
                 // 左、上、手前
                 float A2 = sdf2A(p-vec3(0.0,0.0,0.0));
-                float A = sdfA(p-vec3(-5.0,3.0,1.0), 1.0);
-                float DE = DandE((vec3(p.x,p.z,p.y)-vec3(-4.0,2.0,-3.0))*0.9);
-                float W = sdfW(p-vec3(2.0,2.3,-2.0));
-                float S = sdfS((p-vec3(3.0,-2.0,1.0))*1.2);
+                float A = sdfA(p-vec3(-3.0,-2.0,3.0), 1.0);
+                float DE = sdfDE((vec3(p.x,p.z,p.y)-vec3(-3.0,0.0,3.0))*0.9);
+                float W = sdfW(p-vec3(3.0,3.3,-3.0));
+                float S = sdfS((p-vec3(-3.0,-1.0,3.0))*1.2);
                 return min(S,min(W,min(A2,min(A,DE))));
             }
             
