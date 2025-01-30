@@ -184,11 +184,8 @@
                 float normalizedDA = iKey.y / 100.0;
                 normalizedDA = min(normalizedDA,1.0);
                 normalizedDA = max(normalizedDA,-1.0);
+                uv = uv - vec2(normalizedDA, normalizedWS);
 
-                // iKeyを角度に変換
-                float latitude = normalizedWS*50.0;  // Y軸での回転 (-180° ～ 180°)
-                float longtitude = normalizedDA*50.0; // X軸での回転 (-90° ～ 90°)
-                
                 vec3 ro;
                 vec3 rotuv;
                 // カメラの設定
@@ -216,7 +213,7 @@
                     ro = rotY * rotX * cameraOrigin;
                     rotuv = vec3(rotY * rotX * vec3(uv, 0.0));
                 }else{
-                    ro = vec3(0.0,0.0,10.0);
+                    ro = vec3(0.0, 0.0, 10.0);
                     rotuv = vec3(uv, 0.0);
                 }
                 
